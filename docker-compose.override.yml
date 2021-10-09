@@ -1,0 +1,87 @@
+version: '3.4'
+
+
+services:
+  ecommorcedb:
+    container_name: ecommorcedb
+    restart: always
+    ports:
+        - "27017:27017"
+
+  campaign.api:
+    container_name: campaign.api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - "DatabaseSettings:ConnectionString=mongodb://ecommorcedb:27017"
+    depends_on:
+      - ecommorcedb
+    ports:
+      - "8000:80"
+
+  product.api:
+    container_name: product.api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - "DatabaseSettings:ConnectionString=mongodb://ecommorcedb:27017"
+      - "EventBusSettings:HostAddress=amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+      - ecommorcedb
+      - rabbitmq
+    ports:
+      - "8002:80"
+  orderdb:
+    container_name: orderdb
+    environment:
+        SA_PASSWORD: "SwN12345678"
+        ACCEPT_EULA: "Y"
+    ports:
+        - "1433:1433"
+
+  rabbitmq:
+    container_name: rabbitmq
+    restart: always
+    ports:
+        - "5672:5672"
+        - "15672:15672"
+  ordering.api:
+    container_name: ordering.api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - "ConnectionStrings:OrderingConnectionString=Server=orderdb;Database=OrderDb;User Id=sa;Password=SwN12345678" 
+      - "EventBusSettings:HostAddress=amqp://guest:guest@rabbitmq:5672"
+    depends_on:
+        - orderdb
+        - rabbitmq
+        - product.api
+    ports:
+        - "8004:80"
+    volumes:
+        - ~/.aspnet/https:/root/.aspnet/https:ro
+        - ~/.microsoft/usersecrets:/root/.microsoft/usersecrets:ro
+  ocelotapigw:
+    container_name: ocelotapigw
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - "ApiSettings:GatewayAddress=http://ocelotapigw"
+    depends_on:
+        - product.api
+        - campaign.api
+        - ordering.api
+    ports:
+      - "8010:80"
+
+
+  shopping.aggregator:
+    container_name: shopping.aggregator
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - "ApiSettings:CampaignUrl=http://campaign.api"
+      - "ApiSettings:ProductUrl=http://product.api"
+      - "ApiSettings:OrderUrl=http://ordering.api"
+    depends_on:
+      - catalog.api
+      - basket.api
+      - ordering.api
+    ports:
+      - "8005:80"
+
